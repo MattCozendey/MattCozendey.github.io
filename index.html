@@ -1,82 +1,480 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>Flashing Messages</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Red Ball Animation</title>
     <style>
-        html {
-            -webkit-box-sizing: border-box;
-            -moz-box-sizing: border-box;
-            box-sizing: border-box;
-        }
-
         *,
-        *:before,
-        *:after {
-            -webkit-box-sizing: inherit;
-            -moz-box-sizing: inherit;
-            box-sizing: inherit;
+        *::before,
+        *::after {
             padding: 0;
             margin: 0;
+            box-sizing: border-box;
         }
 
         body {
             display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
             width: 100vw;
+            height: 100vh;
         }
 
-        @keyframes flash {
-            0% {
-                opacity: 1;
-            }
-
-            25% {
-                opacity: 0;
-            }
-
-            50% {
-                opacity: 1;
-            }
-
-            75% {
-                opacity: 0;
-            }
-
-            100% {
-                opacity: 1;
-            }
+        .animation-container {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: #f5f5f5;
+            background-size: 40px 40px;
+            --color: rgba(0, 0, 0, 0.10);
+            background-image:
+                linear-gradient(to right, var(--color) 1px, transparent 1px),
+                linear-gradient(to bottom, var(--color) 1px, transparent 1px);
+            background-position: center;
         }
 
-        #message {
-            display: none;
-            animation: flash 8s infinite;
-            font-family: monospace;
-            font-weight: bold;
+        #animation {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-origin: 0% 0%;
+        }
+
+        .distanceLabel {
+            position: absolute;
+            font-size: 10px;
+            color: black;
+            font-family: Arial, sans-serif;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 2px 4px;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+
+        .frames-container {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 35vw;
+            overflow: hidden;
+
+            img {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+            }
         }
     </style>
 </head>
 
 <body>
-    <div id="message">VAI</div>
-    <audio autoplay>
-        <source src="" type="audio/mpeg">
-    </audio>
+    <section class="animation-container" data-zoom>
+        <div id="animation"></div>
+    </section>
+    <section class="frames-container">
+        <img id="imageFrame" src="" alt="Frame" />
+    </section>
     <script>
-        const text = 'Arruma a mesinha por favor?'
-        const messages = text.split(' ');
-        const msg = document.getElementById('message')
-        const maxLength = Math.max(...messages.map(msg => msg.length));
-        const fontSizeVW = 100 / maxLength;
-        let index = 0;
+        const VIDEO_FRAME_RATE = 23.98;
+        const ANIMATION_FRAME_RATE = VIDEO_FRAME_RATE;
+        const BALL_RADIUS_IN_PIXELS = 10;
+        const TRAIL_WIDTH_IN_PIXELS = BALL_RADIUS_IN_PIXELS / 5;
+        const GRID_SIZE_IN_METERS = 1; // 1 meter per grid square
+        const WHEEL_SENSITIVITY = 0.15; // 0.1 meters per wheel scroll
+        const MARK_SCOUT_HEIGHT_IN_METERS = 1.75;
+        const MARK_SCOUT_STEP_LENGTH_IN_METERS = MARK_SCOUT_HEIGHT_IN_METERS * 0.415;
+        const MARK_SCOUT_AVERAGE_STEP_COUNT_PER_SECOND = 4;
+        const PIXELS_PER_METER = 10; // every n pixels = a meter
+        const INTERPOLATE_FRAMES = false;
+        const RENDER_MAP = true;
+        const RENDER_VIDEO = true;
+        const instructions = [
+            { frame: 1060, direction: 'WEST' },
+            { frame: 1115, direction: 'NORTH' },
+            { frame: 1158, direction: 'EAST' },
+            { frame: 1231, direction: 'SOUTH' },
+            { frame: 1258, direction: 'EAST' },
+            { frame: 1269, direction: 'SOUTH' },
+            { frame: 1290, direction: 'EAST' },
+            { frame: 1329, direction: 'SOUTH' },
+            { frame: 1509, direction: 'NORTH', note: '(180deg turn)' },
+            { frame: 1589, direction: 'WEST' },
+            { frame: 1651, direction: 'SOUTH' },
+            { frame: 1669, direction: 'WEST' },
+            { frame: 1705, direction: 'NORTH' },
+            { frame: 1768, direction: 'WEST' },
+            { frame: 1808, direction: 'SOUTH' },
+            { frame: 1814, direction: 'WEST' },
+            { frame: 1821, direction: 'SOUTH' },
+            { frame: 1841, direction: 'WEST' },
+            { frame: 1837, direction: 'SOUTH' },
+            { frame: 1860, direction: 'WEST' },
+            { frame: 1911, direction: 'SOUTH' },
+            { frame: 1930, direction: 'WEST' },
+            { frame: 1955, direction: 'SOUTH' },
+            { frame: 2045, direction: 'EAST' },
+            { frame: 2096, direction: 'SOUTH' },
+            { frame: 2114, direction: 'WEST' },
+            { frame: 2159, direction: 'SOUTH' },
+            { frame: 2178, direction: 'WEST' },
+            { frame: 2272, direction: 'SOUTH' },
+            { frame: 2290, direction: 'NORTH', note: '(180deg [wall?])' },
+            { frame: 2330, direction: 'WEST' },
+            { frame: 2370, direction: 'SOUTH' },
+            { frame: 2667, direction: 'NORTH', note: '(180deg) PINK FLOORED OFFICE. CONTINUITY ERROR?' },
+            { frame: 2795, direction: 'EAST' },
+            { frame: 2993, direction: 'SOUTH' },
+            { frame: 3025, direction: 'SOUTH', note: 'MS CASEY\'S OFFICE/WELLNESS' },
+        ];
+        const animationContainer = document.querySelector('.animation-container');
+        const framesContainer = document.querySelector('.frames-container');
+        const animation = document.getElementById('animation');
+        const containerBounds = animation.getBoundingClientRect();
+        const containerWidth = containerBounds.width;
+        const containerLeft = containerBounds.left;
+        const containerTop = containerBounds.top;
+        const containerHeight = containerBounds.height;
+        const frameToPauseAt = instructions[instructions.length - 1].frame + 2;
+        const getZoomLevel = () => {
+            const fromElement = Number(animationContainer.dataset.zoom);
+            const fromQuery = new URLSearchParams(window.location.search).get('zoom');
+            const finalZoom = fromQuery ? Number(fromQuery) : fromElement || 1;
+            animationContainer.dataset.zoom = finalZoom;
+            window.history.replaceState(null, null, `?zoom=${finalZoom}`);
+            return finalZoom;
+        }
+        const findLast = (array, predicate) => {
+            // given an array, return the last element that satisfies the predicate
+            const canonPredicate = [true, false].includes(predicate) ? predicate : x => !!x;
+            for (let i = array.length - 1; i >= 0; i--) {
+                if (canonPredicate === true) {
+                    return array[i];
+                }
+                if (predicate(array[i])) {
+                    return array[i];
+                }
+            }
+        }
+        const getSecondsElapsed = (frameCount, frameRate) => frameCount / frameRate;
+        const getMarkScoutDistanceTravelledInMeters = ({ frameCount, frameRate }) => {
+            const secondsElapsed = getSecondsElapsed(frameCount, frameRate);
+            const stepsTaken = secondsElapsed * MARK_SCOUT_AVERAGE_STEP_COUNT_PER_SECOND;
+            return stepsTaken * MARK_SCOUT_STEP_LENGTH_IN_METERS;
+        }
+        const animate = ({
+            trail,
+        }) => {
+            const currentTime = performance.now();
+            const { lastFrameTime, frame } = trail[trail.length - 1];
+            if (currentTime - lastFrameTime < ANIMATION_FRAME_RATE) {
+                return requestAnimationFrame(() => {
+                    animate({ trail });
+                });
+            }
+            const minFrame = instructions[0].frame;
+            const maxFrame = instructions[instructions.length - 1].frame;
+            const canonFrame = frame < minFrame ? minFrame : frame > maxFrame ? maxFrame : frame;
+            if (canonFrame < minFrame) return;
+            if (canonFrame > maxFrame) return;
+            renderFrame(canonFrame);
+            //console.log(`Attempting to render frame: ${canonFrame}`);
 
-        setInterval(() => {
-            msg.innerText = messages[index];
-            msg.setAttribute('style', `display: block; font-size: ${fontSizeVW}vw;`);
-            index = (index + 1) % messages.length;
-        }, 2000);
+            // given the currentX and the currentY, we must render
+            // the ball AT THE CURRENT POSITION, but then modify it's position
+            // based on newCourse. This works because CSS should take care of the
+            // interpolation. However, we should care about the "transition" property, right?
+            // to set the duration of the interpolation.
+
+
+            // UPDATE:
+            // this is where this motherfucker will be until the next instruction is found.
+            // hence, if the instruction at frame 0709 says the direction is WEST
+            // he'll be going WEST until a new instructions is found.
+            // meaning, 
+            const currentCourse = findLast(instructions, (instruction) => {
+                return instruction.frame <= canonFrame;
+            });
+            if (!currentCourse) return;
+            const nextChangeCourse = instructions.find((instruction) => {
+                return instruction.direction !== currentCourse.direction && instruction.frame > canonFrame
+            });
+            const { x: currentX, y: currentY } = trail[trail.length - 1];
+            if (canonFrame !== maxFrame && canonFrame !== currentCourse.frame) {
+                return requestAnimationFrame(() => {
+                    if (canonFrame + 1 >= frameToPauseAt) return;
+                    animate({
+                        trail: trail.concat([{
+                            x: currentX,
+                            y: currentY,
+                            frame: canonFrame + 1,
+                            lastFrameTime: currentTime
+                        }]),
+                    });
+                });
+            }
+            //we'll use translate to move the ball around.
+            const ball = document.getElementById('animatedBall') ?? (() => {
+                const tempBall = document.createElement('div');
+                tempBall.id = 'animatedBall';
+                tempBall.style.position = 'absolute';
+                tempBall.style.width = `${BALL_RADIUS_IN_PIXELS}px`;
+                tempBall.style.height = `${BALL_RADIUS_IN_PIXELS}px`;
+                tempBall.style.left = `${((containerWidth / 2) + containerLeft) - (BALL_RADIUS_IN_PIXELS / 2)}px`;
+                tempBall.style.top = `${((containerHeight / 2) + containerTop) - (BALL_RADIUS_IN_PIXELS / 2)}px`;
+                tempBall.style.backgroundColor = 'red';
+                tempBall.style.borderRadius = '50%';
+                animation.appendChild(tempBall);
+                return tempBall;
+            })();
+            // left and top should take into account the radius of the ball.
+            // so if X and Y match the exact point which is the center of the animation container
+            // we want the bal at the middle.
+            const framesPassed = Math.abs((nextChangeCourse?.frame ?? currentCourse.frame) - currentCourse.frame);
+            const newDirection = nextChangeCourse?.direction ?? currentCourse.direction;
+            const secondsElapsed = getSecondsElapsed(framesPassed, VIDEO_FRAME_RATE);
+            const stepsTaken = secondsElapsed * MARK_SCOUT_AVERAGE_STEP_COUNT_PER_SECOND;
+            const distanceTravelledInMeters = stepsTaken * MARK_SCOUT_STEP_LENGTH_IN_METERS;
+            const { x: newX, y: newY } = (() => {
+                const delta = distanceTravelledInMeters;
+                switch (currentCourse.direction) {
+                    case 'NORTH': {
+                        return {
+                            x: currentX,
+                            y: currentY - delta
+                        };
+                    }
+                    case 'SOUTH': {
+                        return {
+                            x: currentX,
+                            y: currentY + delta
+                        };
+                    }
+                    case 'EAST': {
+                        return {
+                            x: currentX + delta,
+                            y: currentY
+                        };
+                    }
+                    case 'WEST': {
+                        return {
+                            x: currentX - delta,
+                            y: currentY
+                        };
+                    }
+                }
+            })();
+
+            const xInPixels = newX === currentX ? currentX * PIXELS_PER_METER : newX * PIXELS_PER_METER;
+            const yInPixels = newY === currentY ? currentY * PIXELS_PER_METER : newY * PIXELS_PER_METER;
+
+            // if the movement was only in the X axis, we want the trail to be horizontal
+            // if the movement was only in the Y axis, we want the trail to be vertical
+            // we want to know whether the movement was in the X or Y axis.
+            const isHorizontal = currentX !== newX;
+            const isVertical = currentY !== newY;
+            const isToLeft = currentX > newX;
+            const isToRight = currentX < newX;
+            const isToTop = currentY > newY;
+            const isToBottom = currentY < newY;
+
+            const ballTransform = `translate(${xInPixels}px, ${yInPixels}px)`;
+            //we'll create a box around where the ball is going to be, starting from
+            // the current position of the ball.
+            const wall = document.getElementById(`wall_${canonFrame}`) ?? (() => {
+                const tempWall = document.createElement('div');
+                tempWall.id = `wall_${canonFrame}`;
+                tempWall.style.left = `${(containerWidth / 2) + containerLeft}px`;
+                tempWall.style.top = `${(containerHeight / 2) + containerTop}px`;
+                tempWall.style.position = 'absolute';
+                animation.appendChild(tempWall);
+                return tempWall;
+            })();
+            if (isToRight) {
+                wall.style.transform = `translate(${currentX * PIXELS_PER_METER}px, ${currentY * PIXELS_PER_METER}px)`;
+                const distanceTravelledInPixels = Math.abs(newX - currentX) * PIXELS_PER_METER;
+                wall.style.width = `${distanceTravelledInPixels}px`;
+
+                wall.style.height = `${TRAIL_WIDTH_IN_PIXELS}px`;
+                wall.style.borderTop = '2px solid red';
+            }
+            if (isToTop) {
+                wall.style.transform = `translate(${currentX * PIXELS_PER_METER}px, ${yInPixels}px)`;
+                const distanceTravelledInPixels = Math.abs(newY - currentY) * PIXELS_PER_METER;
+                wall.style.height = `${distanceTravelledInPixels}px`;
+                wall.style.width = `${TRAIL_WIDTH_IN_PIXELS}px`;
+                wall.style.borderLeft = '2px solid red';
+            }
+            if (isToBottom) {
+                wall.style.transform = `translate(${currentX * PIXELS_PER_METER}px, ${currentY * PIXELS_PER_METER}px)`;
+                const distanceTravelledInPixels = Math.abs(newY - currentY) * PIXELS_PER_METER;
+                wall.style.height = `${distanceTravelledInPixels}px`;
+                wall.style.width = `${TRAIL_WIDTH_IN_PIXELS}px`;
+                wall.style.borderLeft = '2px solid red';
+            }
+            if (isToLeft) {
+                wall.style.transform = `translate(${xInPixels}px, ${currentY * PIXELS_PER_METER}px)`;
+                const distanceTravelledInPixels = Math.abs(newX - currentX) * PIXELS_PER_METER;
+                wall.style.width = `${distanceTravelledInPixels}px`;
+                wall.style.height = `${TRAIL_WIDTH_IN_PIXELS}px`;
+                wall.style.borderTop = '2px solid red';
+            }
+            //ball.style.transition = `transform ${secondsElapsed}s linear`;
+            setTimeout(() => {
+                ball.style.transition = '';
+                ball.getBoundingClientRect();
+                ball.style.transform = ballTransform;
+                ball.style.transition = `transform ${secondsElapsed}s linear`;
+                // to the right of the ball, we'll add a label if it exists
+                const distanceLabel = document.getElementById(`distance_label_${canonFrame}`) ?? (() => {
+                    const tempLabel = document.createElement('div');
+                    tempLabel.id = `distance_label_${canonFrame}`;
+                    tempLabel.style.position = 'absolute';
+                    tempLabel.style.fontFamily = 'monospace';
+                    tempLabel.style.fontSize = `${PIXELS_PER_METER}px`;
+                    tempLabel.style.left = `${(containerWidth / 2) + containerLeft}px`;
+                    tempLabel.style.top = `${(containerHeight / 2) + containerTop}px`;
+                    animation.appendChild(tempLabel);
+                    return tempLabel;
+                })();
+                distanceLabel.textContent = `${distanceTravelledInMeters.toFixed(2)}m`;
+                distanceLabel.style.transform = `translate(${xInPixels}px, ${yInPixels}px)`;
+
+                const newNote = canonFrame === maxFrame ? currentCourse?.note ?? "" : nextChangeCourse?.note ?? "";
+                if (newNote) {
+                    // very similarly to the distance label, we'll display a text here.
+                    const noteLabel = document.getElementById(`note_label_${canonFrame}`) ?? (() => {
+                        const tempLabel = document.createElement('div');
+                        tempLabel.id = `note_label_${canonFrame}`;
+                        tempLabel.style.position = 'absolute';
+                        tempLabel.style.fontFamily = 'monospace';
+                        tempLabel.style.fontSize = `${PIXELS_PER_METER}px`;
+                        tempLabel.style.left = `${(containerWidth / 2) + containerLeft}px`;
+                        tempLabel.style.top = `${(containerHeight / 2) + containerTop}px`;
+                        animation.appendChild(tempLabel);
+                        return tempLabel;
+                    })();
+                    noteLabel.textContent = newNote;
+                    noteLabel.style.transform = `translate(${xInPixels + 15}px, ${yInPixels + 15}px)`;
+
+                }
+            }, 0); // Minimal delay to ensure the transition is applied.
+
+            return requestAnimationFrame(() => {
+                if (canonFrame + 1 >= frameToPauseAt) return;
+
+                animate({
+                    trail: trail.concat([{
+                        x: newX,
+                        y: newY,
+                        frame: canonFrame + 1,
+                        lastFrameTime: currentTime
+                    }])
+                });
+            })
+        }
+        const makeElementScrollableByDragging = (elSelector) => {
+            const element = typeof elSelector === 'string' ? document.querySelector(elSelector) : elSelector instanceof HTMLElement ? elSelector : null;
+            if (!element) return;
+            element.style.cursor = 'grab';
+            element.style.overflow = 'auto';
+            element.style.userSelect = 'auto';
+
+            let pos = { top: 0, left: 0, x: 0, y: 0 };
+            const mouseUpHandler = () => {
+                document.removeEventListener('mousemove', mouseMoveHandler);
+                document.removeEventListener('mouseup', mouseUpHandler);
+
+                element.style.cursor = 'grab';
+                element.style.userSelect = 'auto';
+            }
+            const mouseMoveHandler = (e) => {
+                const dx = e.clientX - pos.x;
+                const dy = e.clientY - pos.y;
+
+                element.scrollTop = pos.top - dy;
+                element.scrollLeft = pos.left - dx;
+            }
+            const mouseDownHandler = (e) => {
+                pos = {
+                    left: element.scrollLeft,
+                    top: element.scrollTop,
+                    x: e.clientX,
+                    y: e.clientY,
+                }
+                element.style.cursor = 'grabbing';
+                element.style.userSelect = 'none';
+
+                document.addEventListener('mousemove', mouseMoveHandler);
+                document.addEventListener("mouseup", mouseUpHandler);
+            }
+            element.addEventListener("mousedown", mouseDownHandler);
+
+        }
+        const renderFrame = (frame) => {
+            if (!RENDER_VIDEO) return;
+            //if (!instructions.find(inst => inst.frame === frame)) return;
+
+            const imageElement = document.getElementById("imageFrame") ?? (() => {
+                const tempImage = document.createElement('img');
+                tempImage.id = 'imageFrame';
+                framesContainer.appendChild(tempImage);
+                return tempImage;
+            })();
+            imageElement.src = `./frames/output_${String(frame).padStart(4, "0")}.jpg`;
+        }
+        if (RENDER_MAP) {
+            const zoom = getZoomLevel();
+            let scale = zoom;
+            let offsetX = 0;
+            let offsetY = 0;
+
+            animationContainer.style.backgroundSize = `${PIXELS_PER_METER * zoom}px ${PIXELS_PER_METER * zoom}px`;
+            animationContainer.addEventListener("wheel", (event) => {
+                event.preventDefault();
+
+                // Get mouse position relative to the container
+                const rect = animationContainer.getBoundingClientRect();
+                const mouseX = event.clientX - rect.left;
+                const mouseY = event.clientY - rect.top;
+
+                // Calculate new scale
+                const zoomFactor = event.deltaY > 0
+                    ? Math.pow(0.9, WHEEL_SENSITIVITY)
+                    : Math.pow(1.1, WHEEL_SENSITIVITY);
+
+                const newScale = scale * zoomFactor;
+
+                // Limit scale between 0.1 and 10
+                if (newScale >= 0.1 && newScale <= 10) {
+                    // Calculate new position to keep mouse point fixed
+                    offsetX = mouseX - (mouseX - offsetX) * zoomFactor;
+                    offsetY = mouseY - (mouseY - offsetY) * zoomFactor;
+
+                    // Update scale
+                    scale = newScale;
+
+                    // Apply transforms
+                    animation.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+                    animationContainer.dataset.zoom = scale;
+                    animationContainer.style.backgroundSize = `${PIXELS_PER_METER * scale}px ${PIXELS_PER_METER * scale}px`;
+                    // add query string to the URL to keep the zoom level
+                    window.history.replaceState(null, null, `?zoom=${scale}`);
+                }
+            });
+            if (scale !== 1) {
+                animation.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+            }
+            const firstInstruction = instructions[0];
+            animate({
+                trail: [{
+                    x: 0,
+                    y: 0,
+                    frame: 0,
+                    lastFrameTime: 0
+                }],
+            });
+            makeElementScrollableByDragging(animationContainer);
+        }
     </script>
 </body>
 
