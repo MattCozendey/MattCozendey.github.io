@@ -320,10 +320,8 @@
             }
             //ball.style.transition = `transform ${secondsElapsed}s linear`;
             setTimeout(() => {
-                ball.style.transition = '';
                 ball.getBoundingClientRect();
                 ball.style.transform = ballTransform;
-                ball.style.transition = `transform ${secondsElapsed}s linear`;
                 // to the right of the ball, we'll add a label if it exists
                 const distanceLabel = document.getElementById(`distance_label_${canonFrame}`) ?? (() => {
                     const tempLabel = document.createElement('div');
